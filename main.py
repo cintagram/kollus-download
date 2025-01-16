@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 import ffmpeg
 import pycountry
 import os
@@ -8,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
 import re
 from pathlib import Path
+from tqdm import tqdm  # tqdm 추가
 
 console = logging.StreamHandler()
 logger = logging.getLogger()
@@ -53,10 +52,14 @@ def start_download(video_info: tuple[str, str], server_info: ServerInfo):
         # Start download
         logger.debug(f"[{media_info.title}] Media Key: {media_info.media_key}; ", "Progress:", f"{resume.start/1000000} MB" if resume else None)
         download_request_result: DownloadResponse = download_request(media_key=media_info.media_key, server=server_info, resume=resume, retries=2, title=media_info.title)
-        # Save downloaded data
+        
+        # Save downloaded data with tqdm progress bar
         if download_request_result.data:
-            with open(filepath_tmp, 'ab') as fd:
-                fd.write(download_request_result.data)
+            total_size = len(download_request_result.data)
+            with tqdm(total=total_size, unit='B', unit_scale=True, desc=f"Downloading {filename}") as pbar:
+                with open(filepath_tmp, 'ab') as fd:
+                    fd.write(download_request_result.data)
+                    pbar.update(len(download_request_result.data))  # Update progress bar
 
         # Stop check auth queries
         check_auth_thread_stop[0] = True
@@ -89,20 +92,24 @@ def assemble(download_result: DownloadResult):
             f"metadata:s:s:{i}": f"language={lang}",
         })
 
-    ffmpeg.output(
-        video, 
-        audio, 
-        *[ffmpeg.input(subtitle.url)["s"] for subtitle in download_result.media_info.subtitles],
-        download_result.destination_filepath, 
-        **subtitle_metadata, 
-        **{
-            "c:v": "copy", 
-            "c:a": "copy", 
-            "c:v:1": "mjpeg", 
-            "disposition:v:1": "attached_pic", 
-            "c:s": "mov_text"
-        }
-    ).overwrite_output().run()
+    # Process with progress bar
+    with tqdm(total=100, desc=f"Embedding subtitles in {download_result.media_info.title}") as pbar:
+        ffmpeg.output(
+            video, 
+            audio, 
+            *[ffmpeg.input(subtitle.url)["s"] for subtitle in download_result.media_info.subtitles],
+            download_result.destination_filepath, 
+            **subtitle_metadata, 
+            **{
+                "c:v": "copy", 
+                "c:a": "copy", 
+                "c:v:1": "mjpeg", 
+                "disposition:v:1": "attached_pic", 
+                "c:s": "mov_text"
+            }
+        ).overwrite_output().run()
+        
+        pbar.update(100)  # Subtitle embedding complete, update progress bar
 
     os.remove(download_result.temporary_filepath)
 
