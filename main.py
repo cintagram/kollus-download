@@ -152,16 +152,10 @@ if __name__ == "__main__":
             elif re.match(url_matcher, line):
                 urls.append((current_course, line))
 
-    with open("containers.txt", "r") as fd:
-        containers = get_containers({line.rstrip("\n") for line in fd.readlines()})
-
-    servers = [
-        ServerInfo(
-                    host="0.0.0.0",
-                    protocol="http",
-                    port=container.port,
-                    in_use=False
-        ) for container in containers
-    ]
-
+    servers = [ServerInfo(
+        host="0.0.0.0",
+        protocol="http",
+        port=80,
+        in_use=False
+    )]
     start_downloads(urls, servers)
